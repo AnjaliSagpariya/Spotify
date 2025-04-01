@@ -1,0 +1,224 @@
+---
+title: "Spotify 2023 Data Analysis"
+author: "Shahrukh Rahman"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# **Introduction**
+This report analyzes the **Spotify 2023 dataset**, performing various data manipulation, visualization, and statistical computations in R.
+
+```{r setup, include=FALSE}
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+```
+
+# **1. Load and View Dataset**
+
+```{r}
+spotify_2023_Copy <- read_excel("spotify-2023 - Copy.xls")
+View(spotify_2023_Copy)
+```
+
+# **2. List the variables in your dataset **
+```{r}
+str(spotify_2023_Copy)  # Check structure of dataset
+colnames(spotify_2023_Copy)  # Display column names
+```
+# **3.Top 15 rows of your dataset **
+```{r}
+head(spotify_2023_Copy, 15)  # Display first 15 rows
+```
+
+# **4. User defined function **
+## **Categorize Streams**
+```{r}
+categorize_streams <- function(streams) {
+  if (streams >= 1000000) {
+    return("High Stream")
+  } else {
+    return("Low Stream")
+  }
+}
+spotify_2023_Copy$Stream_Category <- sapply(spotify_2023_Copy$streams, categorize_streams)
+head(spotify_2023_Copy)
+```
+
+## **5. Filtering Recent Songs**
+```{r}
+recent_songs <- spotify_2023_Copy %>% filter(released_year > 2020)
+head(recent_songs)
+```
+
+## **6. Reshape Data**
+```{r}
+spotify_2023_Copy <- spotify_2023_Copy %>%
+  rename(artist_name = `artist(s)_name`) %>%  # Rename artist column
+  select(track_name, artist_name, streams, bpm, `danceability_%`, `energy_%`) %>%  # Select columns
+  pivot_longer(
+    cols = c(bpm, `danceability_%`, `energy_%`),  # Use backticks for special names
+    names_to = "Feature",
+    values_to = "Value"
+  )
+
+head(spotify_2023_Copy)
+```
+
+# **7. Data Cleaning**
+## **Remove Missing Values**
+```{r}
+cleaned_df <- spotify_2023_Copy %>% drop_na()
+sum(is.na(cleaned_df))  # Check if missing values are removed
+```
+
+## **8. Remove Duplicated Rows**
+```{r}
+duplicated_rows <- spotify_2023_Copy %>% filter(duplicated(spotify_2023_Copy))
+unique_df <- spotify_2023_Copy %>% distinct()
+```
+
+## **9. Reorder Rows in Descending Order**
+```{r}
+sorted_df <- spotify_2023_Copy %>% arrange(desc(streams))
+head(sorted_df)
+```
+
+# **10. Data Transformation**
+## **Renaming  Column Name**
+```{r}
+spotify_2023_Copy <- spotify_2023_Copy %>% rename(artis_name = `artist_name`)
+colnames(spotify_2023_Copy)
+```
+
+## **11. Creating a New Variable Using Mathematical Function**
+```{r}
+spotify_2023_Copy <- spotify_2023_Copy %>%
+  mutate(Value = ifelse(Feature == "bpm", as.numeric(Value) * 2, Value))
+
+
+
+```
+
+# **12. Create a Training Set**
+```{r}
+set.seed(123)
+train_index <- sample(1:nrow(spotify_2023_Copy), 0.8 * nrow(spotify_2023_Copy))
+train_set <- spotify_2023_Copy[train_index, ]
+test_set <- spotify_2023_Copy[-train_index, ]
+```
+
+```{r}
+nrow(train_set)  # Check training set size
+nrow(test_set)   # Check test set size
+```
+
+# **13. Summary Statistics**
+```{r}
+summary(spotify_2023_Copy)
+```
+
+## **14. Statistical Functions**
+```{r}
+spotify_2023_Copy <- spotify_2023_Copy %>%
+  mutate(streams = gsub("[^0-9]", "", streams),  # Remove non-numeric characters
+         streams = as.numeric(streams))         # Convert to numeric
+
+mean(spotify_2023_Copy$streams, na.rm = TRUE)
+median(spotify_2023_Copy$streams, na.rm = TRUE)
+
+```
+
+```{r}
+get_mode <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+get_mode(spotify_2023_Copy$streams)
+```
+
+```{r}
+range(spotify_2023_Copy$streams, na.rm = TRUE)
+```
+
+# **15. Data Visualization**
+## **Scatter Plot (BPM vs Energy)**
+```{r}
+# Summarize duplicates by averaging the Value column
+spotify_summarized <- spotify_2023_Copy %>%
+  group_by(track_name, artis_name, streams, Feature) %>%
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop")
+
+# Now pivot the data
+spotify_wide <- spotify_summarized %>%
+  pivot_wider(names_from = Feature, values_from = Value)
+
+# Convert necessary columns to numeric
+spotify_wide <- spotify_wide %>%
+  mutate(bpm = as.numeric(bpm), `energy_%` = as.numeric(`energy_%`))
+
+# Check the result
+head(spotify_wide)
+
+
+ggplot(spotify_wide, aes(x = bpm, y = `energy_%`)) +
+  geom_point(color = "blue") +
+  labs(title = "Scatter Plot of BPM vs Energy",
+       x = "Beats Per Minute (BPM)",
+       y = "Energy Percentage") +
+  theme_minimal()
+
+```
+
+## **16. Bar Plot (Released Year vs Spotify Playlists)**
+```{r}
+spotify_summary <- spotify_2023_Copy %>%
+  group_by(Feature) %>%  # Grouping by the 'Feature' column
+  summarise(total_streams = sum(streams, na.rm = TRUE), .groups = "drop")
+
+ggplot(spotify_summary, aes(x = Feature, y = total_streams)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Bar Plot of Feature vs Total Streams",
+       x = "Feature",
+       y = "Total Streams") +
+  theme_minimal()
+
+
+
+```
+
+# **17. Correlation Analysis**
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Summarize duplicates by calculating the mean for each combination
+spotify_filtered <- spotify_2023_Copy %>%
+  filter(Feature %in% c("bpm", "energy_%")) %>%
+  group_by(track_name, artis_name, streams, Feature) %>%
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = Feature, values_from = Value)
+
+# Check the data to ensure bpm and energy_% are in separate columns
+head(spotify_filtered)
+
+spotify_filtered$bpm <- as.numeric(spotify_filtered$bpm)
+spotify_filtered$`energy_%` <- as.numeric(spotify_filtered$`energy_%`)
+
+# Calculate the correlation
+correlation_value <- cor(spotify_filtered$bpm, spotify_filtered$`energy_%`, use = "complete.obs", method = "pearson")
+print(correlation_value)
+
+
+
+```
+
+# **9. Save and Load Session**
+```{r}
+# Saving the session in the specified directory
+save.image("C:/Users/anjal/Downloads/Spotify v2/Spotify v2/Spotify_Session.RData")
+# Loading the session from the specified directory
+load("C:/Users/anjal/Downloads/Spotify v2/Spotify v2/Spotify_Session.RData")
+
+
